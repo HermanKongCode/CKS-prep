@@ -146,6 +146,11 @@ tbody tr:hover { background: var(--bg-2); }
 .opt.sel { border-color: var(--accent); background: rgba(88,166,255,.08); }
 .opt.right { border-color: rgba(63,185,80,.55); background: rgba(63,185,80,.08); }
 .opt.wrong { border-color: rgba(248,81,73,.55); background: rgba(248,81,73,.08); }
+/* After Submit the option card and its per-option note are drawn as one attached block. */
+.opt.locked { cursor: default; border-radius: 8px 8px 0 0; border-bottom: 0; margin-bottom: 0; }
+.opt.locked input { cursor: default; }
+.opt .badge { flex: 0 0 auto; }
+.opt-why { border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; padding: .45rem .75rem; background: var(--bg-3); font-size: .86rem; color: var(--mute-2); margin: 0 0 .55rem; }
 .timer { font-family: var(--mono); font-size: 1.4rem; letter-spacing: .04em; }
 .timer.low { color: var(--bad); }
 .timer.mid { color: var(--warn); }

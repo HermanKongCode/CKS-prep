@@ -447,7 +447,7 @@
     if (id) return renderQuizQuestion(id);
 
     var html = '<h1>Quiz</h1><p class="dim small">' + App.quiz().length +
-      " knowledge questions. The real CKS is hands-on, so treat this as the theory layer: read the explanation even when you are right.</p>" +
+      " knowledge questions. The real CKS is hands-on, so treat this as the theory layer: pick your answer, submit it, then read why each option behaves the way it does.</p>" +
       '<div class="card"><div class="row"><div><label class="small dim">Domain</label><br>' +
       '<select id="quiz-domain"><option value="all">all (mixed, blueprint-weighted)</option>' +
       App.domains().map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + " (" + d.weight + "%)</option>"; }).join("") +
@@ -487,6 +487,17 @@
     });
     html += "</ul></div>";
 
+    if (quizSession) {
+      var subN = quizSubCount(quizSession);
+      var pickN = quizPickCount(quizSession) - subN;
+      html = '<div class="callout info"><div class="row"><div><b>A quiz session is still open.</b> ' +
+        subN + " of " + quizSession.items.length + " submitted" +
+        (pickN > 0 ? ", " + pickN + " picked but not submitted" : "") +
+        ".</div><span class='spacer'></span>" +
+        '<button class="small" data-act="quiz-resume">Resume it</button>' +
+        '<button class="small ghost" data-act="quiz-abandon">Discard it</button></div></div>' + html;
+    }
+
     App.render(html);
   });
 
@@ -502,55 +513,21 @@
     if (domain !== "all") items = items.filter(function (q) { return q.domain === domain; });
     if (count !== "all" && items.length > count) items = items.slice(0, count);
     if (!items.length) { App.toast("No questions match that selection.", "bad"); return; }
-    quizSession = { items: items, answers: {}, done: false, started: Date.now() };
+    singleQuiz = null;
+    quizSession = newQuizSession(items);
     renderQuizSession();
   };
 
-  function renderQuizSession() {
-    var s = quizSession;
-    if (!s) return App.setTab("quiz", "", false);
-    var answeredCount = Object.keys(s.answers).length;
-    var html = '<div class="row"><h1 style="margin:0">Quiz session</h1><span class="spacer"></span>' +
-      '<span class="badge">' + answeredCount + " / " + s.items.length + " answered</span>" +
-      '<button class="small" data-act="quiz-finish"' + (answeredCount ? "" : " disabled") + ">Submit session</button>" +
-      '<button class="small ghost" data-act="quiz-abandon">Abandon</button></div>' +
-      '<div style="margin:.6rem 0 1.1rem">' + App.bar((answeredCount / s.items.length) * 100) + "</div>";
-
-    s.items.forEach(function (q, idx) {
-      var a = s.answers[q.id];
-      html += '<div class="card" id="qq-' + esc(q.id) + '"><div class="row"><span class="badge mono">' + (idx + 1) + "</span>" +
-        App.domainPill(q.domain) + '<span class="badge">' + esc(q.type) + " choice</span><span class='badge'>" + esc(q.difficulty) + "</span>" +
-        '<span class="spacer"></span>' + tagList(q.tags) + "</div>" +
-        "<p style='margin:.5rem 0 .6rem'><b>" + esc(q.q) + "</b></p>" +
-        (q.multiHint || q.type === "multi" ? '<p class="tiny mute">More than one option can be correct - select exactly the right set.</p>' : "") +
-        '<div data-quiz-opts="' + esc(q.id) + '">';
-      (q.options || []).forEach(function (o, i) {
-        var name = "opt-" + esc(q.id) + "-" + i;
-        var inputType = q.type === "multi" ? "checkbox" : "radio";
-        var cls = "opt";
-        if (a) {
-          var chosen = a.indexOf(i) >= 0;
-          if (o.ok && chosen) cls += " sel right";
-          else if (o.ok && !chosen) cls += " right";
-          else if (!o.ok && chosen) cls += " wrong";
-        }
-        html += '<label class="' + cls + '"><input type="' + inputType + '" name="' + name + '" data-act="quiz-pick" data-id="' + esc(q.id) + '" data-idx="' + i + '"' +
-          (chosenAttr(a, i, q)) + '><span>' + esc(o.t) + "</span></label>";
-      });
-      html += "</div>";
-      if (a) {
-        var correct = isQuizCorrect(q, a);
-        html += '<div class="callout ' + (correct ? "ok" : "bad") + '">' + (correct ? "Correct. " : "Not correct. ") + esc(q.explain || "") + "</div>";
-      }
-      html += "</div>";
-    });
-
-    App.render(html);
+  function newQuizSession(items) {
+    return { items: items, answers: {}, submitted: {}, started: Date.now() };
   }
 
-  function chosenAttr(a, i, q) {
-    if (!a) return "";
-    return a.indexOf(i) >= 0 ? " checked" : "";
+  function quizPickCount(s) {
+    return Object.keys(s.answers).filter(function (id) { return (s.answers[id] || []).length > 0; }).length;
+  }
+
+  function quizSubCount(s) {
+    return Object.keys(s.submitted).filter(function (id) { return !!s.submitted[id]; }).length;
   }
 
   function isQuizCorrect(q, picked) {
@@ -561,10 +538,113 @@
     return sorted.join(",") === r.join(",");
   }
 
-  App.actions["quiz-pick"] = function (act, id, node) {
+  /* The single-question page and a quiz session share one state shape and one set of handlers. */
+  function quizTarget(id) {
+    if (singleQuiz && singleQuiz.id === id) return singleQuiz;
+    if (quizSession && App.byId(quizSession.items, id)) return quizSession;
+    return null;
+  }
+
+  function quizRerender(id) {
+    var y = window.scrollY || 0;
+    if (singleQuiz && singleQuiz.id === id) renderQuizQuestionView();
+    else renderQuizSession();
+    window.scrollTo(0, y);
+  }
+
+  /* Options are only ever coloured, badged and explained once submitted is true. */
+  function quizOptionsHTML(q, picked, submitted) {
+    var html = "";
+    (q.options || []).forEach(function (o, i) {
+      var chosen = !!(picked && picked.indexOf(i) >= 0);
+      var cls = "opt" + (chosen ? " sel" : "");
+      if (submitted) cls += " locked" + (o.ok ? " right" : (chosen ? " wrong" : ""));
+      html += '<label class="' + cls + '"><input type="' + (q.type === "multi" ? "checkbox" : "radio") +
+        '" name="quiz-' + esc(q.id) + '" data-act="quiz-pick" data-id="' + esc(q.id) + '" data-idx="' + i + '"' +
+        (chosen ? " checked" : "") + (submitted ? " disabled" : "") + '><span>' + esc(o.t) + "</span>";
+      if (submitted) {
+        if (o.ok) html += '<span class="badge ok">' + (chosen ? "&#10003; your pick" : "&#10003; model answer") + "</span>";
+        else if (chosen) html += '<span class="badge bad">&#10007; your pick</span>';
+      }
+      html += "</label>";
+      if (submitted) {
+        var why = App.quizWhy(q, i);
+        html += '<div class="opt-why">' + (why ? esc(why) : '<span class="tiny mute">No per-option note for this one.</span>') + "</div>";
+      }
+    });
+    return html;
+  }
+
+  function quizFooterHTML(q, picked, submitted) {
+    var ok = isQuizCorrect(q, picked);
+    var html = '<div class="row tight" style="margin-top:.7rem">';
+    if (!submitted) {
+      html += '<button class="primary small" data-act="quiz-submit" data-id="' + esc(q.id) + '"' +
+        (picked && picked.length ? "" : " disabled") + ">Submit answer</button>";
+      if (picked && picked.length) html += '<button class="ghost small" data-act="quiz-clear" data-id="' + esc(q.id) + '">Clear picks</button>';
+      html += '<span class="spacer"></span><span class="tiny mute">' +
+        (picked && picked.length ? picked.length + " selected - the verdict and every option note stay hidden until you submit" : "nothing selected yet") +
+        "</span>";
+    } else {
+      html += '<span class="badge ' + (ok ? "ok" : "bad") + '">' + (ok ? "&#10003; answered correctly" : "&#10007; answered incorrectly") + "</span>" +
+        '<span class="spacer"></span><span class="tiny mute">options are locked; each one is explained below it</span>';
+    }
+    html += "</div>";
+    if (submitted) html += '<div class="callout ' + (ok ? "ok" : "bad") + '">' + esc(q.explain || "") + "</div>";
+    return html;
+  }
+
+  function nextUnsubmitted(s, afterId) {
+    var seen = false, i;
+    for (i = 0; i < s.items.length; i++) {
+      if (s.items[i].id === afterId) { seen = true; continue; }
+      if (seen && !s.submitted[s.items[i].id]) return s.items[i].id;
+    }
+    for (i = 0; i < s.items.length; i++) { if (!s.submitted[s.items[i].id]) return s.items[i].id; }
+    return null;
+  }
+
+  function renderQuizSession() {
     var s = quizSession;
-    if (!s) return;
+    if (!s) return App.setTab("quiz", "", false);
+    var pickedCount = quizPickCount(s), subCount = quizSubCount(s);
+    var html = '<div class="row"><h1 style="margin:0">Quiz session</h1><span class="spacer"></span>' +
+      '<span class="badge">' + subCount + " / " + s.items.length + " submitted</span>" +
+      (pickedCount > subCount ? '<span class="badge warn">' + (pickedCount - subCount) + " picked but not submitted</span>" : "") +
+      '<button class="small" data-act="quiz-finish"' + (subCount ? "" : " disabled") + ">Finish and score</button>" +
+      '<button class="small ghost" data-act="quiz-abandon">Abandon</button></div>' +
+      '<div style="margin:.6rem 0 1rem">' + App.bar((subCount / s.items.length) * 100) + "</div>" +
+      '<p class="tiny mute">Select your option(s), then press <b>Submit answer</b>. The site reveals the verdict and a note for every option only after you submit. Questions you never submit score as wrong.</p>';
+
+    s.items.forEach(function (q, idx) {
+      var picked = s.answers[q.id], submitted = !!s.submitted[q.id];
+      var status = submitted
+        ? (isQuizCorrect(q, picked) ? '<span class="badge ok">submitted: correct</span>' : '<span class="badge bad">submitted: incorrect</span>')
+        : '<span class="badge warn">not submitted</span>';
+      var controls = "";
+      if (submitted) {
+        var nx = nextUnsubmitted(s, q.id);
+        controls = '<div class="row tight" style="margin-top:.6rem">' +
+          (nx ? '<button class="small ghost" data-act="quiz-next" data-id="' + esc(nx) + '">Go to the next question I have not submitted</button>'
+              : '<span class="tiny mute">Nothing left to submit - use Finish and score above.</span>') +
+          "</div>";
+      }
+      html += '<div class="card" id="qq-' + esc(q.id) + '"><div class="row"><span class="badge mono">' + (idx + 1) + "</span>" +
+        App.domainPill(q.domain) + '<span class="badge">' + esc(q.type) + " choice</span><span class='badge'>" + esc(q.difficulty) + "</span>" +
+        '<span class="spacer"></span>' + status + "</div>" +
+        '<p style="margin:.5rem 0 .6rem"><b>' + esc(q.q) + "</b></p>" + tagList(q.tags) +
+        (q.type === "multi" ? '<p class="tiny mute">More than one option can be right - submit exactly the set you believe.</p>' : "") +
+        quizOptionsHTML(q, picked, submitted) + quizFooterHTML(q, picked, submitted) + controls + "</div>";
+    });
+
+    App.render(html);
+  }
+
+  App.actions["quiz-pick"] = function (act, id, node) {
+    var s = quizTarget(id);
+    if (!s || s.submitted[id]) return;
     var q = App.byId(s.items, id);
+    if (!q) return;
     var idx = parseInt(node.getAttribute("data-idx"), 10);
     var picked = s.answers[id] ? s.answers[id].slice() : [];
     if (q.type === "multi") {
@@ -572,39 +652,85 @@
       if (at >= 0) picked.splice(at, 1); else picked.push(idx);
     } else picked = [idx];
     s.answers[id] = picked;
-    App.recordQuiz(id, isQuizCorrect(q, picked));
-    renderQuizSession();
+    quizRerender(id);
   };
 
-  App.actions["quiz-abandon"] = function () { quizSession = null; App.setTab("quiz", "", false); };
+  App.actions["quiz-clear"] = function (act, id) {
+    var s = quizTarget(id);
+    if (!s || s.submitted[id]) return;
+    delete s.answers[id];
+    quizRerender(id);
+  };
+
+  App.actions["quiz-submit"] = function (act, id) {
+    var s = quizTarget(id);
+    if (!s || s.submitted[id]) return;
+    var q = App.byId(s.items, id);
+    if (!q) return;
+    var picked = s.answers[id] || [];
+    if (!picked.length) { App.toast("Select at least one option before submitting.", "bad"); return; }
+    s.submitted[id] = true;
+    var ok = isQuizCorrect(q, picked);
+    App.recordQuiz(id, ok);
+    quizRerender(id);
+    var card = document.getElementById("qq-" + id);
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+    App.toast(ok ? "Correct." : "Not correct - read the note under every option.", ok ? "ok" : "bad");
+  };
+
+  App.actions["quiz-next"] = function (act, id) {
+    var s = quizSession;
+    if (!s) return;
+    var nx = nextUnsubmitted(s, id);
+    if (!nx) { App.toast("Every question in this session has been submitted.", "ok"); return; }
+    var node = document.getElementById("qq-" + nx);
+    if (node) node.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  App.actions["quiz-resume"] = function () { renderQuizSession(); };
+
+  App.actions["quiz-abandon"] = function () { quizSession = null; singleQuiz = null; App.setTab("quiz", "", false); };
 
   App.actions["quiz-finish"] = function () {
     var s = quizSession;
     if (!s) return;
-    var right = 0, perDomain = {};
+    var right = 0, skipped = 0, perDomain = {};
     s.items.forEach(function (q) {
-      var a = s.answers[q.id];
-      var ok = a && isQuizCorrect(q, a);
+      var submitted = !!s.submitted[q.id];
+      var ok = submitted && isQuizCorrect(q, s.answers[q.id]);
+      if (!submitted) skipped++;
       if (ok) right++;
       var d = perDomain[q.domain] || (perDomain[q.domain] = { n: 0, ok: 0 });
       d.n++; if (ok) d.ok++;
     });
     var total = s.items.length;
-    var html = '<h1>Quiz result</h1><div class="row"><div class="stat"><b>' + Math.round((right / total) * 100) + "%</b><span>" + right + " of " + total + "</span></div>" +
-      '<button class="small" data-act="quiz-retry-wrong">Retry the wrong ones</button>' +
-      '<button class="small" data-act="quiz-abandon">Back to quiz</button></div><div class="card"><table><thead><tr><th>Domain</th><th>Answered</th><th>Correct</th></tr></thead><tbody>';
+    var html = '<h1>Quiz result</h1><div class="row">' +
+      '<div class="stat"><b>' + Math.round((right / total) * 100) + '%</b><span>' + right + " of " + total + " correct</span></div>" +
+      '<div class="stat"><b>' + skipped + "</b><span>never submitted</span></div>" +
+      '<span class="spacer"></span><button class="small" data-act="quiz-retry-wrong">Retry the ones I got wrong</button>' +
+      '<button class="small" data-act="quiz-abandon">Back to quiz</button></div>';
+    if (skipped) html += '<div class="callout warn">' + skipped + ' question(s) were picked but never submitted, so they count as wrong. Submit each answer to see the per-option notes.</div>';
+    html += '<div class="card"><table><thead><tr><th>Domain</th><th>Asked</th><th>Correct</th></tr></thead><tbody>';
     App.domains().forEach(function (d) {
       var p = perDomain[d.id];
       if (!p) return;
-      html += "<tr><td>" + App.domainPill(d.id) + '</td><td class="mono">' + p.n + '</td><td class="mono ' + (p.ok / p.n >= 0.8 ? "pass" : "fail") + '">' + p.ok + "</td></tr>";
+      html += '<tr><td>' + App.domainPill(d.id) + '</td><td class="mono">' + p.n + '</td><td class="mono ' + (p.ok / p.n >= 0.8 ? "pass" : "fail") + '">' + p.ok + "</td></tr>";
     });
     html += "</tbody></table></div>";
-    var wrong = s.items.filter(function (q) { var a = s.answers[q.id]; return !a || !isQuizCorrect(q, a); });
+
+    var wrong = s.items.filter(function (q) { return !s.submitted[q.id] || !isQuizCorrect(q, s.answers[q.id]); });
     if (wrong.length) {
-      html += '<h2>Review</h2>';
+      html += "<h2>Review with a note for every option</h2>";
       wrong.forEach(function (q) {
+        var picked = s.answers[q.id] || [];
         html += '<div class="card tight"><b>' + esc(q.q) + "</b>" + App.domainPill(q.domain) +
-          "<ul>" + (q.options || []).map(function (o) { return '<li class="' + (o.ok ? "pass" : "fail") + '">' + (o.ok ? "&#10003; " : "&#10007; ") + esc(o.t) + "</li>"; }).join("") + "</ul>" +
+          '<ul class="clean">' + (q.options || []).map(function (o, i) {
+            var mine = picked.indexOf(i) >= 0;
+            var why = App.quizWhy(q, i);
+            return '<li class="' + (o.ok ? "pass" : "fail") + '">' + (o.ok ? "&#10003; " : "&#10007; ") + esc(o.t) +
+              (mine ? ' <span class="badge">your pick</span>' : "") +
+              (why ? '<div class="tiny mute" style="margin-top:.25rem">' + esc(why) + "</div>" : "") + "</li>";
+          }).join("") + "</ul>" +
           '<p class="small dim">' + esc(q.explain || "") + "</p></div>";
       });
     }
@@ -614,25 +740,46 @@
 
   App.actions["quiz-retry-wrong"] = function () {
     var items = App.quiz().filter(function (q) { return App.state.quiz[q.id] && !App.state.quiz[q.id].correct; });
-    if (!items.length) { App.toast("Nothing to retry - every question you have answered is currently correct.", "ok"); return; }
-    quizSession = { items: shuffle(items.slice()), answers: {}, done: false, started: Date.now() };
+    if (!items.length) { App.toast("Nothing to retry - every question you have submitted is currently correct.", "ok"); return; }
+    quizSession = newQuizSession(shuffle(items.slice()));
     renderQuizSession();
   };
+
+  var singleQuiz = null;
 
   function renderQuizQuestion(id) {
     var q = App.byId(App.quiz(), id);
     if (!q) { App.render('<div class="callout bad">Question <code>' + esc(id) + "</code> was not found.</div>"); return; }
+    singleQuiz = { id: q.id, items: [q], answers: {}, submitted: {}, started: Date.now() };
+    renderQuizQuestionView();
+  }
+
+  function renderQuizQuestionView() {
+    var s = singleQuiz;
+    if (!s) return;
+    var q = s.items[0];
+    var picked = s.answers[q.id], submitted = !!s.submitted[q.id];
     var st = App.state.quiz[q.id] || null;
     var html = '<div class="row"><button class="ghost small" data-act="tab" data-tab="quiz">&larr; quiz</button><span class="spacer"></span>' +
       App.domainPill(q.domain) + '<span class="badge">' + esc(q.type) + " choice</span><span class='badge'>" + esc(q.difficulty) + "</span></div>" +
       '<h1 style="margin-top:.6rem">' + esc(q.q) + "</h1>" + tagList(q.tags) +
-      '<div class="card"><p class="tiny mute">Tick the option(s) to check the answer against the bank.</p>';
-    (q.options || []).forEach(function (o, i) {
-      html += '<label class="opt ' + (o.ok ? "right" : "") + '"><input type="' + (q.type === "multi" ? "checkbox" : "radio") + '" name="single-' + esc(q.id) + '">' +
-        "<span>" + esc(o.t) + "</span></label>";
-    });
-    html += '<div class="callout info">' + esc(q.explain || "") + "</div></div>";
-    if (st) html += '<p class="small dim">Last attempt: ' + (st.correct ? "correct" : "wrong") + " (" + st.attempts + " attempt" + (st.attempts === 1 ? "" : "s") + ").</p>";
+      '<div class="card"><p class="tiny mute">Tick the option(s), then press <b>Submit answer</b>. No option is coloured, marked or explained before you submit.</p>' +
+      quizOptionsHTML(q, picked, submitted) + quizFooterHTML(q, picked, submitted) + "</div>" +
+      quizStepHTML(q);
+    if (st) html += '<p class="small dim">Last submitted attempt: ' + (st.correct ? "correct" : "wrong") + " (" + st.attempts + " attempt" + (st.attempts === 1 ? "" : "s") + ").</p>";
     App.render(html);
+  }
+
+  function quizStepHTML(q) {
+    var bank = App.quiz(), i = -1;
+    for (var k = 0; k < bank.length; k++) { if (bank[k].id === q.id) { i = k; break; } }
+    if (i < 0) return "";
+    var html = '<div class="row tight" style="margin-top:.9rem">';
+    if (i > 0) html += '<button class="small ghost" data-act="tab" data-tab="quiz" data-id="' + esc(bank[i - 1].id) + '">&larr; previous question</button>';
+    html += '<span class="spacer"></span><span class="tiny mute">question ' + (i + 1) + " of " + bank.length + "</span>";
+    html += '<span class="spacer"></span>';
+    if (i < bank.length - 1) html += '<button class="small ghost" data-act="tab" data-tab="quiz" data-id="' + esc(bank[i + 1].id) + '">next question &rarr;</button>';
+    html += "</div>";
+    return html;
   }
 })();

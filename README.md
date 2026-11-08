@@ -31,7 +31,7 @@ progress stores; use **Progress -> export / import** to move between them.
 | Dashboard | `1` | Exam facts (format, 120 minutes, CKA prerequisite, attempts, killer.sh), blueprint weights, your coverage per domain, and a "what to do next" queue. |
 | Learn | `2` | 31 topic notes across the six CKS domains: why the control exists, the exact files and flags, YAML you can copy, gotchas, and official doc links. |
 | Labs | `3` | 24 **exam-style walkthroughs**: scenario, what you need, tasks, the commands with the reasoning next to them, verification commands, and the pitfalls that cost people marks. |
-| Quiz | `4` | 66 multiple-choice / multi-select questions. Multi-select needs exactly the right set. Explanations after every answer. |
+| Quiz | `4` | 66 multiple-choice / multi-select questions. Tick the option(s), then press **Submit answer** per question - nothing is coloured, graded or explained before you submit. After Submit, every option is marked right/wrong and carries its own one-line reason (why the model answer is right, why each distractor fails), plus a "Go to the next question I have not submitted" jump. Multi-select needs exactly the right set, so a partial answer scores 0. Open `#/quiz/q-xxx` for a single question with previous/next buttons. |
 | Command drill | `5` | 43 typing drills. You write the `kubectl` / `etcdctl` / Dockerfile / YAML answer, the site grades it against "must appear" and "must not appear" patterns, then you can reveal the model answer. This is the closest thing to muscle memory you can get from a webpage. |
 | Mock exam | `6` | A timed (120 min, auto-submit) mock built by sampling questions in proportion to the blueprint weights, plus hands-on cards you self-score 1 / 0.5 / 0 after comparing with the model answer. Per-domain scores, overall score, pass line 65, and a review of everything you missed. |
 | Flashcards | `7` | 91 cards with spaced repetition: "known" leaves, "unsure" comes back, and you can re-run only the unsure ones. |
@@ -51,6 +51,12 @@ assets/data-meta.js        exam facts, blueprint weights (with sources), exam ti
 assets/data-learn-1.js     topics for Cluster Setup, Cluster Hardening, System Hardening
 assets/data-learn-2.js     topics for Microservice Vulnerabilities, Supply Chain, Monitoring/Runtime
 assets/data-quiz.js        66 questions
+assets/data-quiz-why-1.js  per-option reasons for domain 1 (Cluster Setup) questions
+assets/data-quiz-why-2.js  ... one file per blueprint domain, 1-6 (all 66 questions, 279 options)
+assets/data-quiz-why-3.js      { "q-xxx": ["reason for option 1", "reason for option 2", ...] }
+assets/data-quiz-why-4.js      order matches data-quiz.js, so it is easy to diff and edit
+assets/data-quiz-why-5.js    They load after data-quiz.js and are read lazily by App.quizWhy(),
+assets/data-quiz-why-6.js    so a missing file only costs the notes for its own domain.
 assets/data-drill.js       43 typed drills with grading patterns and model answers
 assets/data-labs.js        24 walkthroughs
 assets/data-cards.js       91 flashcards
@@ -60,7 +66,8 @@ assets/app-views-exam.js   Drill / Mock / Cards / Cheat / Progress views, then A
 ```
 
 Scripts are loaded as classic `<script>` tags in that order, and each data file exposes a global
-(`window.CKS_LEARN`, `window.CKS_QUIZ`, `window.CKS_DRILLS`, `window.CKS_LABS`, `window.CKS_CARDS`,
+(`window.CKS_LEARN`, `window.CKS_QUIZ`, `window.CKS_QUIZ_WHY_1` .. `window.CKS_QUIZ_WHY_6`,
+`window.CKS_DRILLS`, `window.CKS_LABS`, `window.CKS_CARDS`,
 `window.CKS_META`, `window.CKS_BLUEPRINT`, `window.CKS_EXAM_TIPS`, `window.CKS_RESOURCES`).
 That is deliberate: no ES modules and no `fetch()` of local JSON, so `file://` works.
 
@@ -83,7 +90,9 @@ whitespace collapse to a single space. So a pattern should be quote-free and mus
 If something in a data file breaks, the page prints it in the browser console and
 **Progress -> data self-test** lists every problem it can find (weights not summing to 100, duplicate ids,
 a multi-select question with fewer than two correct options, a drill whose own model answer fails its own
-requirement, a pattern that contains a quote character). Right now the self-test reports nothing.
+requirement, a pattern that contains a quote character, a quiz option that has no per-option note, a
+`data-quiz-why-*` entry whose id is not in the question bank, or no note files loaded at all). Right now the
+self-test reports nothing: all 66 questions have a note for every one of their 279 options.
 
 ## Important honesty notes
 

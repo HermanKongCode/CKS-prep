@@ -507,6 +507,7 @@
     });
     var total = weightSum ? acc / weightSum : 0;
     var passMark = App.meta().passMark || 65;
+    var pass = total >= passMark;
 
     var attempt = {
       at: new Date().toISOString(), minutes: Math.round((Date.now() - s.started) / 60000),
@@ -546,7 +547,11 @@
         var q = App.byId(App.quiz(), qid);
         if (!q) return;
         html += '<div class="card tight"><b>' + esc(q.q) + "</b> " + App.domainPill(q.domain) +
-          "<ul>" + (q.options || []).map(function (o) { return '<li class="' + (o.ok ? "pass" : "fail") + '">' + (o.ok ? "&#10003; " : "&#10007; ") + esc(o.t) + "</li>"; }).join("") + "</ul>" +
+          "<ul>" + (q.options || []).map(function (o, i) {
+            var note = App.quizWhy(q, i);
+            return '<li class="' + (o.ok ? "pass" : "fail") + '">' + (o.ok ? "&#10003; " : "&#10007; ") + esc(o.t) +
+              (note ? '<div class="tiny mute" style="margin-top:.25rem">' + esc(note) + "</div>" : "") + "</li>";
+          }).join("") + "</ul>" +
           '<p class="small dim">' + esc(q.explain || "") + "</p>" +
           '<button class="small" data-act="tab" data-tab="learn" data-id="' + esc(firstTopicFor(q)) + '">study notes</button></div>';
       });
@@ -970,7 +975,7 @@
     App.openOverlay("<h2>Content self-test</h2>" + (problems.length
       ? '<div class="callout bad">' + problems.length + " issue(s) found - open the browser console (F12) for the full list.</div><ul class='small'>" +
         problems.map(function (p) { return "<li>" + esc(p) + "</li>"; }).join("") + "</ul>"
-      : '<div class="callout ok">All content files passed: ids are unique, quiz answers are consistent, and every drill is validated against its own solution.</div>') +
+      : '<div class="callout ok">All content files passed: ids are unique, quiz answers are consistent, every quiz option has its own note, and every drill is validated against its own solution.</div>') +
       '<button class="primary" data-act="close-overlay">Close</button>');
   };
 

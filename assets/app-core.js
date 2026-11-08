@@ -43,6 +43,21 @@
     return list.filter(function (x) { return x && x.domain === domainId; });
   };
 
+  /* Per-option note for a quiz question: inline option.why first, then the note bank files. */
+  App.quizWhy = function (q, idx) {
+    if (!q || !q.options || !q.options[idx]) return null;
+    var inline = q.options[idx].why;
+    if (typeof inline === "string" && inline) return inline;
+    for (var n = 1; n <= 8; n++) {
+      var part = window["CKS_QUIZ_WHY_" + n];
+      if (part && part[q.id]) {
+        var v = part[q.id][idx];
+        if (typeof v === "string" && v) return v;
+      }
+    }
+    return null;
+  };
+
   App.difficultyRank = { "setup": 0, easy: 1, medium: 2, hard: 3 };
 
   /* Items related to a learn topic: labs, drills, quiz questions, cards. */
@@ -568,6 +583,19 @@
       });
     });
 
+    /* Per-option notes for the quiz bank live in assets/data-quiz-why-<n>.js. */
+    var quizIds = {};
+    App.quiz().forEach(function (q) { quizIds[q.id] = true; });
+    var whyParts = 0, whyOrphans = 0;
+    for (var wp = 1; wp <= 8; wp++) {
+      var part = window["CKS_QUIZ_WHY_" + wp];
+      if (!part) continue;
+      whyParts++;
+      Object.keys(part).forEach(function (k) { if (!quizIds[k]) whyOrphans++; });
+    }
+    if (!whyParts) warn("no per-option quiz notes loaded (expected assets/data-quiz-why-1..6.js)");
+    if (whyOrphans) warn("per-option quiz notes contain " + whyOrphans + " id(s) that are not in the question bank");
+
     App.quiz().forEach(function (q) {
       var oks = (q.options || []).filter(function (o) { return o && o.ok === true; }).length;
       if (!q.options || q.options.length < 2) warn("quiz " + q.id + " has fewer than 2 options");
@@ -575,6 +603,9 @@
       if (q.type === "multi" && oks < 2) warn("quiz " + q.id + " is multi-choice but has only " + oks + " correct options");
       if (q.type !== "single" && q.type !== "multi") warn("quiz " + q.id + " has type " + q.type);
       if (!q.explain) warn("quiz " + q.id + " has no explanation");
+      var noNote = 0;
+      (q.options || []).forEach(function (o, i) { if (!App.quizWhy(q, i)) noNote++; });
+      if (noNote) warn("quiz " + q.id + ": " + noNote + " option(s) have no per-option note");
     });
 
     App.drills().forEach(function (d) {
