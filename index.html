@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CKS Prep - learn, practice, mock</title>
+<meta name="description" content="Offline study, hands-on lab and mock-exam workspace for the Certified Kubernetes Security Specialist (CKS) exam.">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='15' fill='white' text-anchor='middle'%3ECKS%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <div class="brand">
+      <b>CKS Prep</b>
+      <span>learn &middot; practice &middot; mock &mdash; offline, no build, no server needed</span>
+    </div>
+    <div class="top-actions">
+      <button id="btn-search" class="ghost" title="Search everything (Ctrl+K)">Search</button>
+      <button id="btn-help" class="ghost" title="Keyboard shortcuts (?)">?</button>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button class="tab" data-tab="dashboard" aria-selected="true"><span class="k">1</span>Dashboard</button>
+    <button class="tab" data-tab="learn"><span class="k">2</span>Learn</button>
+    <button class="tab" data-tab="labs"><span class="k">3</span>Labs</button>
+    <button class="tab" data-tab="quiz"><span class="k">4</span>Quiz</button>
+    <button class="tab" data-tab="drill"><span class="k">5</span>Command Drill</button>
+    <button class="tab" data-tab="mock"><span class="k">6</span>Mock Exam</button>
+    <button class="tab" data-tab="cards"><span class="k">7</span>Flashcards</button>
+    <button class="tab" data-tab="cheat"><span class="k">8</span>Cheat Sheet</button>
+    <button class="tab" data-tab="progress"><span class="k">9</span>Progress</button>
+  </nav>
+</header>
+
+<main id="view" tabindex="-1">
+  <noscript>
+    <div class="callout bad">This site needs JavaScript. Open <code>index.html</code> in a browser with scripting enabled.</div>
+  </noscript>
+  <div id="data-warn"></div>
+  <div id="out"></div>
+</main>
+
+<div class="kbd-help">
+  <kbd>1</kbd>-<kbd>9</kbd> tabs &nbsp; <kbd>Ctrl</kbd>+<kbd>K</kbd> search &nbsp; <kbd>?</kbd> help &nbsp; <kbd>Esc</kbd> close
+</div>
+
+<footer>
+  <div id="foot-note"></div>
+</footer>
+
+<div class="overlay" id="overlay" hidden></div>
+<div class="toasts" id="toasts"></div>
+
+<!-- Data first, then the app. Plain classic scripts: no modules, no fetch, so the
+     whole site works by double-clicking index.html (file:// included). -->
+<script src="assets/data-meta.js"></script>
+<script src="assets/data-learn-1.js"></script>
+<script src="assets/data-learn-2.js"></script>
+<script src="assets/data-quiz.js"></script>
+<script src="assets/data-drill.js"></script>
+<script src="assets/data-labs.js"></script>
+<script src="assets/data-cards.js"></script>
+
+<script src="assets/app-core.js"></script>
+<script src="assets/app-views-learn.js"></script>
+<script src="assets/app-views-exam.js"></script>
+
+</body>
+</html>
